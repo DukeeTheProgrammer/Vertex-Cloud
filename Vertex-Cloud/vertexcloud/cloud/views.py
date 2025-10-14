@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse, FileResponse
 from datetime import datetime
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 from .tools import get_ext, session_key_generator, Hasher
@@ -49,7 +49,6 @@ def login_user(request):
     if request.method == "POST":
         username = request.POST.get("username")
         password = request.POST.get("password")
-        print(username, password)
         user = authenticate(request, username=username, password=password)
         key = ""
         if user is not None:
@@ -77,7 +76,7 @@ def add_file(request):
         file = request.FILES.get("file")
         key = request.POST.get("key")
         if key != request.session["auth"]["key"]:
-            return JsonResponse({"status":False, "message":"Invalid Key! #if you need a new key, use this endpoint '/token/' and register a new key or check if you have an existing one.", "producer":"DukeeTheProgrammer"})
+            return JsonResponse({"status":False, "message":f"Could not create file : -'{file.name}' - due to Invalid Key! #if you need a new key, use this endpoint '/token/' and register a new key or check if you have an existing one.", "producer":"DukeeTheProgrammer"})
         user = User.objects.filter(username=request.session["auth"]["user"]).first()
         filename = file.name
         type = file.content_type
@@ -96,7 +95,7 @@ def get_files(request):
         session_key = request.POST.get("key")
 
         if session_key != request.session["auth"]["key"]:
-            return JsonResponse({"status":False,"message":"Invalid Key entered For this user. You can use /get/new/key/ endpoint to create a new key"})
+            return JsonResponse({"status":False,"message":"Invalid Key entered For this user. You can use /token/ endpoint to create a new key"})
         username = request.session["auth"]["user"]
         print(username)
         user = User.objects.filter(username=username).first()
@@ -168,3 +167,52 @@ def get_file(request):
         return JsonResponse({"status":False, "message":"Invalid Token Key. you can visit '/token/' for a new token key or get your existing ones"})
     except Exception as e:
         return JsonResponse({"status":False, "message":f"{e}"})
+
+
+@csrf_exempt
+def delete_file(request):
+    if request.method == "POST":
+        return JsonResponse({"status":True, "message":"Resend The request User GET. post is currently not supported.", "authorization":"user-token" if request.session["auth"]["key"] == request.POST.get("key") else "No Authorization. Page content has been locked"})
+    key = request.GET.get("key")
+    id = request.GET.get("id")
+
+    if not key or key !=request.session["auth"]["key"]:
+        return JsonResponse({"status":False, "message":"Invalid Token Key."})
+    user = User.objects.filter(username=request.session["auth"]["user"]).first()
+    if user is None:
+        return JsonResponse({"status":False, "message":"Invalid Token key"})
+
+    #return File properties if file id exists
+
+    file = File(user=user, id=id)
+    if file is not None:
+        file.delete()
+        return JsonResponse({"status":True, "message":f"File with id : '{id}' has been deleted", "authorization": "user-token" if request.session["auth"]["key"] == key else "No Authorization access"})
+    return JsonResponse({"status":False, "message":"Could not delete file due to File not ex8sts or invalid id given"})
+
+
+@csrf_exempt
+def remove_session(request):
+    key = request.POST.get("key") if request.method=="POST" else request.GET.get("key")
+    if key != request.session["auth"]["key"]:
+        return JsonResponse({"status":False, "message":"Invalid token Key"})
+    if not key:
+        return JsonResponse({"status":False, "message":"A token is required to access this Endpoint"})
+    username=request.session["auth"]["user"]
+    user = User.objects.filter(username=username).first()
+    try:
+        request.session.flush()
+        logout(user)
+        return JsonResponse({"status":True, "message":f"User : {user.username} sessions has been Flushed and Now logged out."})
+    except Exception as e:
+        return JsonResponse({"status":False, "message":f"{e}"})
+
+
+@csrf_exempt
+def delete_user(request):
+    key = request.GET.get("key") if request.method=="GET" else request.POST.get("key")
+    password = request.GET.get("password") if request.method =="GET" else request.POST.get("password")
+
+    print(key, password)
+
+
